@@ -87,15 +87,11 @@ switch_interrupt_handler()
 }
 
 void add_play_history(int ms){
-	if(playCounter >= PLAY_HISTORY){
-		for(int i = PLAY_HISTORY; i > 1; i--){
+		int min = ++playCounter<PLAY_HISTORY?playCounter:PLAY_HISTORY;
+		for(int i = min-1; i >= 1; i--){
 			playMs[i] = playMs[i-1];
 		}
 		playMs[0] = ms;
-	}
-	else{
-		playMs[playCounter++] = ms;
-	}
 }
 void wdt_c_handler()
 {
