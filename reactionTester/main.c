@@ -3,6 +3,9 @@
 #include "lcdutils.h"
 #include "lcddraw.h"
 #include <stdlib.h>
+#include <stdio.h>
+#include "history.h"
+#include "history.c"
 
 #define NUM_POSITIONS 5
 #define SW1 BIT0
@@ -25,7 +28,11 @@ char game_started = 0;
 char game_active = 0;
 volatile int rand_post_timer = 0;
 volatile int delay_timer = 0;
+List lst = {.root=0};
+List *playHistory = &lst;
 
+void add_play_history();
+void print_play_history();
 static char 
 switch_update_interrupt_sense()
 {
@@ -55,20 +62,31 @@ switch_interrupt_handler()
 	if(p2val & BIT0){
 		game_started = 1;
 		rand_post_timer = wdt_timer + TIME_COUNT + (rand() % TIME_COUNT);;
-		fillRectangle(110,140,10,10,COLOR_GREEN);
 		P1DIR |= LED;
 		P1OUT |= LED;
+		clearScreen(COLOR_BLACK);
+		drawString5x7(5,130,"Game Started,",COLOR_WHITE,BG_COLOR);
+		drawString5x7(5,140,"Press BTN2 on green.",COLOR_WHITE,BG_COLOR);
 	}
 	if(p2val & BIT1){
 		P1DIR &= ~LED;
 		P1OUT &= ~LED;
-		if(game_started){
-			game_started = game_active = painted = painted1 = 0;
+		if(game_started & game_active){
+			int caught_time = delay_timer;
+			char time[6];
+			sprintf(time,"%dms",caught_time * 4); // 1000/250 ms
+			add_play_history(playHistory,time);
 		}
+		game_started = game_active = painted = painted1 = delay_timer = 0;
 		clearScreen(COLOR_BLACK);
-		fillRectangle(110,140,10,10,COLOR_RED);
+		drawString5x7(5,150,"Idle",COLOR_WHITE,BG_COLOR);
 		// TODO : implement stat and history viewer
   }
+	if(p2val & BIT2){
+		if(~game_started){
+			print_play_history();
+		}
+	}
 }
 
 void wdt_c_handler()
@@ -86,8 +104,37 @@ void wdt_c_handler()
 		}	
 	}
 }
-  
-void update_shape();
+void add_play_history(List *list, char *str){
+	struct s_Item *item = malloc(sizeof(struct s_Item));
+	char *sstr = (char*)malloc(sizeof(char) * 6);
+	char *tmp = sstr;
+	while(*str){
+		*tmp = *str;
+		str++;
+		tmp++;
+	}
+	if(list->root == 0){
+		item->next = 0;
+		item->str = sstr;
+		list->root = item;
+		return;
+	}
+	item->id = list->root->id+1;
+	item->next = list->root;
+	list->root = item;
+}
+void print_play_history(){
+	Item *tmp = playHistory->root;
+	clearScreen(COLOR_BLACK);
+	drawString5x7(10,10,"Last 5 Plays",COLOR_RED,BG_COLOR);
+	for(int i = 0; i < 5; i++){
+		if(!tmp) return;
+		char str[10];
+		sprintf(str,"%d. %s",i+1,tmp->str);
+		drawString5x7(10,30 + (i*10),str,COLOR_GREEN,BG_COLOR);
+		tmp = tmp->next;
+	}
+}
 
 void main()
 {
@@ -98,18 +145,9 @@ void main()
   enableWDTInterrupts();      /**< enable periodic interrupt */
   or_sr(0x18);	              /**< GIE (enable interrupts) */
   
+	playHistory->root = 0;
   clearScreen(COLOR_BLACK);
 }
-
-    
-    
-void
-update_shape()
-{
-	//fillRectangle(0,10,130,10,COLOR_RED);
-	//fillRectangle(0,0,130,160,COLOR_RED);
-}
-
 
 /* Switch on S2 */
 void
