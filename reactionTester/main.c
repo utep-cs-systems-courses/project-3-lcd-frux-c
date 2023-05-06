@@ -4,8 +4,6 @@
 #include "lcddraw.h"
 #include <stdlib.h>
 #include <stdio.h>
-#include "history.h"
-#include "history.c"
 
 #define NUM_POSITIONS 5
 #define SW1 BIT0
@@ -21,6 +19,7 @@ unsigned short sqColors[] = {COLOR_RED, COLOR_GREEN, COLOR_ORANGE, COLOR_BLUE};
 
 #define SWITCHES 15
 #define TIME_COUNT 250
+#define PLAY_HISTORY 5
 
 int redrawScreen = 1;
 volatile int wdt_timer = 0;
@@ -28,8 +27,8 @@ char game_started = 0;
 char game_active = 0;
 volatile int rand_post_timer = 0;
 volatile int delay_timer = 0;
-List lst = {.root=0};
-List *playHistory = &lst;
+int playCounter = 0;
+int playMs[PLAY_HISTORY] = {0};
 
 void add_play_history();
 void print_play_history();
@@ -73,9 +72,7 @@ switch_interrupt_handler()
 		P1OUT &= ~LED;
 		if(game_started & game_active){
 			int caught_time = delay_timer;
-			char time[6];
-			sprintf(time,"%dms",caught_time * 4); // 1000/250 ms
-			add_play_history(playHistory,time);
+			add_play_history(caught_time * 4); // 1 tick is 4 ms	
 		}
 		game_started = game_active = painted = painted1 = delay_timer = 0;
 		clearScreen(COLOR_BLACK);
@@ -89,6 +86,17 @@ switch_interrupt_handler()
 	}
 }
 
+void add_play_history(int ms){
+	if(playCounter >= PLAY_HISTORY){
+		for(int i = PLAY_HISTORY; i > 1; i--){
+			playMs[i] = playMs[i-1];
+		}
+		playMs[0] = ms;
+	}
+	else{
+		playMs[playCounter++] = ms;
+	}
+}
 void wdt_c_handler()
 {
 	if(game_started  & ~game_active){
@@ -104,38 +112,19 @@ void wdt_c_handler()
 		}	
 	}
 }
-void add_play_history(List *list, char *str){
-	struct s_Item *item = malloc(sizeof(struct s_Item));
-	char *sstr = (char*)malloc(sizeof(char) * 6);
-	char *tmp = sstr;
-	while(*str){
-		*tmp = *str;
-		str++;
-		tmp++;
-	}
-	if(list->root == 0){
-		item->next = 0;
-		item->str = sstr;
-		list->root = item;
-		return;
-	}
-	item->id = list->root->id+1;
-	item->next = list->root;
-	list->root = item;
-}
-void print_play_history(){
-	Item *tmp = playHistory->root;
-	clearScreen(COLOR_BLACK);
-	drawString5x7(10,10,"Last 5 Plays",COLOR_RED,BG_COLOR);
-	for(int i = 0; i < 5; i++){
-		if(!tmp) return;
-		char str[10];
-		sprintf(str,"%d. %s",i+1,tmp->str);
-		drawString5x7(10,30 + (i*10),str,COLOR_GREEN,BG_COLOR);
-		tmp = tmp->next;
-	}
-}
 
+void print_play_history(){
+	clearScreen(COLOR_BLACK);
+	char header[12];
+	sprintf(header,"Last %d Plays",PLAY_HISTORY);
+	drawString5x7(10,10,header,COLOR_RED,BG_COLOR);
+	for(int i = 0; i < PLAY_HISTORY; i++){
+		if(!playMs[i]) break;
+		char str[6];
+		sprintf(str,"%d. %dms",i+1,playMs[i]);
+		drawString5x7(10,30 + (i*10),str,COLOR_GREEN,BG_COLOR);
+	}
+}
 void main()
 {
   configureClocks();
@@ -145,7 +134,6 @@ void main()
   enableWDTInterrupts();      /**< enable periodic interrupt */
   or_sr(0x18);	              /**< GIE (enable interrupts) */
   
-	playHistory->root = 0;
   clearScreen(COLOR_BLACK);
 }
 
